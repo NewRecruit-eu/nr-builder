@@ -8,6 +8,9 @@ on:
         required: true
         default: "master"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -23,26 +26,39 @@ jobs:
             platform_flag: --mac
 
     env:
-      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Setup env
         run: |
-          git config --global credential.helper store
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
 
+      # nuxt-nr and its nr-shared submodule are private: each is cloned with its own read-only deploy key,
+      # the workflow's token only reaches this repo (where the release is published)
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v5
         with:
-          repository: vflam/nuxt-nr
+          repository: NewRecruit-eu/nuxt-nr
           ref: ${{ github.event.inputs.branch }}
-          submodules: true
-          token: ${{ secrets.GH_TOKEN }}
+          ssh-key: ${{ secrets.NUXT_NR_DEPLOY_KEY }}
           fetch-depth: 1
 
+      - name: Checkout nr-shared
+        shell: bash
+        env:
+          NR_SHARED_DEPLOY_KEY: ${{ secrets.NR_SHARED_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$NR_SHARED_DEPLOY_KEY" > ~/.ssh/nr_shared
+          chmod 600 ~/.ssh/nr_shared
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          git config --global url."git@github.com:NewRecruit-eu/nr-shared".insteadOf https://github.com/NewRecruit-eu/nr-shared
+          git config --global --add url."git@github.com:NewRecruit-eu/nr-shared".insteadOf https://github.com/giloushaker/nr-shared
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/nr_shared -o IdentitiesOnly=yes" git submodule update --init
+
       - name: Install Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v5
         with:
           node-version: 24.14.1
 
